@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Výrobní stopky</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: sans-serif; padding: 20px; background: #f4f4f4; }
+    .container { max-width: 800px; margin: auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+    button { padding: 10px 20px; margin: 5px; font-size: 16px; }
+    select, textarea { width: 100%; margin-top: 10px; padding: 8px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th, td { padding: 10px; border: 1px solid #ccc; text-align: left; }
+    #errorForm { display: none; margin-top: 20px; background: #eee; padding: 10px; border-radius: 5px; }
+    #chartContainer { margin-top: 30px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Výrobní stopky</h2>
+    <div>
+      <span id="timer">00:00:00.00</span>
+    </div>
+    <button onclick="startTimer()">Start</button>
+    <button onclick="pauseTimer()">Stop</button>
+    <button onclick="resetTimer()">Vynulovat</button>
+    <button onclick="showErrorForm()">Chyba</button>
+
+    <div id="errorForm">
+      <label for="errorMain">Třídník – hlavní kategorie:</label>
+      <select id="errorMain" onchange="updateSubcategories()">
+        <option value="ST">ST (Stroje)</option>
+        <option value="PT">PT (Procesy)</option>
+      </select>
+
+      <label for="errorSub">Třídník – podkategorie:</label>
+      <select id="errorSub"></select>
+
+      <label for="errorArea">Oblast problému:</label>
+      <select id="errorArea">
+        <option value="Elektro">Elektro</option>
+        <option value="Pneu">Pneu</option>
+        <option value="Konstrukce">Konstrukce</option>
+        <option value="SW">SW</option>
+        <option value="Montáž">Montáž</option>
+      </select>
+
+      <label for="errorDesc">Popis chyby:</label>
+      <textarea id="errorDesc" rows="3"></textarea>
+      <button onclick="logError()">Zaznamenat chybu</button>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Čas</th>
+          <th>Třída</th>
+          <th>Oblast</th>
+          <th>Popis</th>
+        </tr>
+      </thead>
+      <tbody id="log"></tbody>
+    </table>
+
+    <button onclick="renderChart()">Zobrazit graf</button>
+
+    <div id="chartContainer">
+      <canvas id="errorChart" width="600" height="300"></canvas>
+    </div>
+  </div>
+
+  <script>
+    let startTime = 0, timerInterval;
+    let elapsedTime = 0;
+
+    const stOptions = Array.from({length: 10}, (_, i) => `ST${i+1}`);
+    const ptOptions = Array.from({length: 12}, (_, i) => `PT${i+1}`);
+
+    function updateSubcategories() {
+      const selected = document.getElementById('errorMain').value;
+      const sub = document.getElementById('errorSub');
+      sub.innerHTML = '';
+      const options = selected === 'ST' ? stOptions : ptOptions;
+      options.forEach(opt => {
+        const o = document.createElement('option');
+        o.value = opt;
+        o.textContent = opt;
+        sub.appendChild(o);
+      });
+    }
+
+    updateSubcategories(); // initialize on load
+
+    function updateTimer() {
+      const now = Date.now();
+      const diff = now - startTime + elapsedTime;
+      const h = String(Math.floor(diff / 3600000)).padStart(2, '0');
+      const m = String(Math.floor((diff % 3600000) / 60000)).padStart(2, '0');
+      const s = String(Math.floor((diff % 60000) / 1000)).padStart(2, '0');
+      const cs = String(Math.floor((diff % 1000) / 10)).padStart(2, '0');
+      document.getElementById('timer').textContent = `${h}:${m}:${s}.${cs}`;
+    }
+
+    function startTimer() {
+      if (!timerInterval) {
+        startTime = Date.now();
+        timerInterval = setInterval(updateTimer, 10);
+      }
+    }
+
+    function pauseTimer() {
+      if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+        elapsedTime += Date.now() - startTime;
+      }
+    }
+
+    function resetTimer() {
+      clearInterval(timerInterval);
+      timerInterval = null;
+      elapsedTime = 0;
+      document.getElementById('timer').textContent = "00:00:00.00";
+    }
+
+    function showErrorForm() {
+      pauseTimer();
+      document.getElementById('errorForm').style.display = 'block';
+    }
+
+    function logError() {
+      const category = document.getElementById('errorSub').value;
+      const area = document.getElementById('errorArea').value;
+      const desc = document.getElementById('errorDesc').value;
+      const time = document.getElementById('timer').textContent;
+
+      const row = document.createElement('tr');
+      row.innerHTML = `<td>${time}</td><td>${category}</td><td>${area}</td><td>${desc}</td>`;
+      document.getElementById('log').appendChild(row);
+
+      document.getElementById('errorForm').style.display = 'none';
+      document.getElementById('errorDesc').value = '';
+      startTimer();
+    }
+
+    function renderChart() {
+      const errorTypes = {};
+      document.querySelectorAll('#log tr').forEach(row => {
+        const type = row.children[1].innerText;
+        errorTypes[type] = (errorTypes[type] || 0) + 1;
+      });
+
+      const ctx = document.getElementById('errorChart').getContext('2d');
+      new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: Object.keys(errorTypes),
+          datasets: [{
+            label: 'Počet chyb podle třídníku',
+            data: Object.values(errorTypes),
+            backgroundColor: 'rgba(153, 102, 255, 0.6)',
+            borderColor: 'rgba(153, 102, 255, 1)',
+            borderWidth: 1
+          }]
+        },
+        options: {
+          scales: {
+            y: { beginAtZero: true }
+          }
+        }
+      });
+    }
+  </script>
+</body>
+</html>
